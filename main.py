@@ -268,7 +268,7 @@ class MusicPlayerApp(QMainWindow):
         self.load_settings()
         
     def init_ui(self):
-        self.setWindowTitle("音乐播放器 (soundfree)")
+        self.setWindowTitle("音乐播放器")
         self.setGeometry(100, 100, 800, 600)
         # 创建菜单栏
         self.create_menu_bar()
