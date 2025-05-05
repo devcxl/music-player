@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton,
                             QHBoxLayout, QMenuBar, QAction, QSplitter,
                             QAbstractItemView, QSizePolicy, QMenu, QSystemTrayIcon)
 from PyQt5.QtCore import Qt, QSettings, pyqtSignal
-from PyQt5.QtGui import QKeySequence
 import sys
 from PyQt5.QtGui import QIcon
 from pynput import keyboard
