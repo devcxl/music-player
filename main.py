@@ -12,8 +12,8 @@ from PyQt5.QtCore import Qt, QSettings, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 import sys
 from PyQt5.QtGui import QIcon
-
-
+from pynput import keyboard
+import threading
 
 class MusicGroupWidget(QWidget):
     groupSelected = pyqtSignal(str)
@@ -201,8 +201,7 @@ class MusicListWidget(QWidget):
                     break
             
             btn = QPushButton("快捷键" + (f" ({current_hotkey})" if current_hotkey else ""))
-            btn.clicked.connect(lambda : self.shortcutRequested.emit(music_path, current_hotkey))
-            
+            btn.clicked.connect(lambda _, mp=music_path, hk=current_hotkey: self.shortcutRequested.emit(mp, hk))
             layout.addWidget(label)
             layout.addWidget(btn)
             layout.setStretch(0, 1)
@@ -268,6 +267,7 @@ class MusicPlayerApp(QMainWindow):
         self.init_ui()
         # 初始化快捷键字典
         self.shortcuts = {}
+        self.hotkey_listener = None
         # 加载上次的设置
         self.load_settings()
 
@@ -285,16 +285,15 @@ class MusicPlayerApp(QMainWindow):
         tray_menu.addAction(quit_action)
 
         self.tray_icon.setContextMenu(tray_menu)
-
         # 绑定菜单事件
         show_action.triggered.connect(self.show_window)
-        quit_action.triggered.connect(QApplication.quit)
-
+        quit_action.triggered.connect(self.quit)
         # 双击托盘图标显示窗口
         self.tray_icon.activated.connect(self.on_tray_activated)
-
         # 显示托盘图标
         self.tray_icon.show()
+
+    
     def init_ui(self):
         self.setWindowTitle("音乐播放器")
         self.setGeometry(100, 100, 800, 600)
@@ -443,32 +442,30 @@ class MusicPlayerApp(QMainWindow):
     def set_music_hotkey(self, music_path, current_hotkey):
         hotkey, ok = QInputDialog.getText(
             self, "设置快捷键", 
-            f"为 {os.path.basename(music_path)} 设置快捷键组合 (如 Ctrl+P):", 
-            text=current_hotkey if current_hotkey else ""
+            f"为 {os.path.basename(music_path)} 设置快捷键组合 (如 <Ctrl>+<Alt>+P):", 
+            text=current_hotkey if current_hotkey else "<Ctrl>+<Alt>+1"
         )
         
         if ok:
             # 检查快捷键是否已被占用
-            if hotkey and hotkey in self.shortcuts and self.shortcuts[hotkey][0] != music_path:
+            if hotkey and hotkey in self.shortcuts and self.shortcuts[hotkey] != music_path:
                 QMessageBox.warning(self, "警告", f"快捷键 {hotkey} 已被 {os.path.basename(self.shortcuts[hotkey][0])} 占用!")
                 return
                 
             # 移除旧的快捷键
             if current_hotkey in self.shortcuts:
-                self.shortcuts[current_hotkey][1].deleteLater()
                 del self.shortcuts[current_hotkey]
             
             # 设置新的快捷键
             if hotkey:
-                shortcut = QShortcut(QKeySequence(hotkey), self)
-                shortcut.activated.connect(lambda : self.toggle_play_music(music_path))
-                self.shortcuts[hotkey] = (music_path, shortcut)
+                self.shortcuts[hotkey] = music_path
                 # 保存到列表显示
                 self.music_list_widget.set_hotkey(music_path, hotkey)
+                self.start_global_hotkey_listener()
             else:
                 # 清除快捷键
                 self.music_list_widget.set_hotkey(music_path, "")
-    
+
     def toggle_play_music(self, music_path):
         if self.current_playing == music_path and self.stream is not None:
             self.stop_music()
@@ -542,7 +539,6 @@ class MusicPlayerApp(QMainWindow):
     
     def playback_finished(self):
         # 播放完成后的回调
-        print("播放完成")
         self.current_frame = 0
         self.current_playing = None
         self.play_btn.setText("播放")
@@ -592,10 +588,10 @@ class MusicPlayerApp(QMainWindow):
         
         # 重新创建快捷键
         for hotkey, music_path in self.music_list_widget.hotkeys.items():
-            shortcut = QShortcut(QKeySequence(hotkey), self)
-            shortcut.activated.connect(lambda: self.toggle_play_music(music_path))
-            self.shortcuts[hotkey] = (music_path, shortcut)
+            self.shortcuts[hotkey] = music_path
         
+        self.start_global_hotkey_listener()
+
         # 选择第一个分组
         groups = self.group_widget.get_all_groups()
         if groups:
@@ -613,12 +609,6 @@ class MusicPlayerApp(QMainWindow):
         self.music_list_widget.save_hotkeys(self.settings)
     
     def closeEvent(self, event):
-        # # 保存设置
-        # self.save_settings()
-        
-        # # 停止播放并退出
-        # self.stop_music()
-        # event.accept()
         event.ignore()
         self.hide()
         self.tray_icon.showMessage(
@@ -637,6 +627,37 @@ class MusicPlayerApp(QMainWindow):
         if reason == QSystemTrayIcon.DoubleClick:
             self.show_window()
 
+    def start_global_hotkey_listener(self):
+        if self.hotkey_listener:
+            # 如果已存在监听器，先停止它
+            try:
+                self.hotkey_listener.stop()
+            except:
+                pass
+            self.hotkey_listener = None
+
+        if self.shortcuts:
+            print("当前注册的快捷键:", self.shortcuts)
+            # 创建新的监听器，并绑定对应的回调函数
+            self.hotkey_listener = keyboard.GlobalHotKeys(
+                {hotkey: lambda hk=hotkey: self.toggle_play_music(self.shortcuts[hk]) for hotkey in self.shortcuts}
+            )
+
+            def for_thread():
+                with self.hotkey_listener:
+                    self.hotkey_listener.join()
+
+            # 设置 daemon=True 表示该线程为守护线程，主程序退出时自动结束
+            thread = threading.Thread(target=for_thread, daemon=True)
+            thread.start()
+    def quit(self):
+        if self.hotkey_listener:
+            self.hotkey_listener.stop()
+        # 保存设置
+        self.save_settings()
+        # 停止播放并退出
+        self.stop_music()
+        QApplication.quit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
