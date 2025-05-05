@@ -7,13 +7,12 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton,
                             QFileDialog, QMessageBox, QShortcut, 
                             QInputDialog, QListWidget, QListWidgetItem,
                             QHBoxLayout, QMenuBar, QAction, QSplitter,
-                            QAbstractItemView, QSizePolicy, QMenu, QSystemTrayIcon)
+                            QAbstractItemView, QSizePolicy, QMenu, QSystemTrayIcon,QDialog)
 from PyQt5.QtCore import Qt, QSettings, pyqtSignal
 import sys
 from PyQt5.QtGui import QIcon
 from pynput import keyboard
 import threading
-
 
 
 def resource_path(relative_path):
@@ -449,12 +448,99 @@ class MusicPlayerApp(QMainWindow):
             # 更新当前列表
             self.music_list_widget.set_music_files(self.group_widget.groups[self.current_group])
     
+
+    def record_hotkey_dialog(self, music_path, current_hotkey):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("录制快捷键")
+        layout = QVBoxLayout()
+
+        self.keys_pressed = []
+        self.formatted_keys = []
+
+        label = QLabel(f"正在录制快捷键...\n请按下任意组合键后点击 确定 或按 Enter 确认\n当前快捷键: {current_hotkey or '无'}")
+        layout.addWidget(label)
+
+        confirm_btn = QPushButton("确定")
+        confirm_btn.clicked.connect(lambda: dialog.done(QDialog.Accepted))
+        layout.addWidget(confirm_btn)
+
+        dialog.setLayout(layout)
+        dialog.setModal(True)
+
+        def on_press(key):
+            try:
+                char_key = key.char.lower()
+                if char_key not in self.formatted_keys:
+                    self.keys_pressed.append(char_key)
+                    self.formatted_keys.append(char_key)
+                    label.setText(f"已记录: {'+'.join(self.formatted_keys)}\n点击 确定 或按 Enter 完成")
+            except AttributeError:
+                # 处理特殊按键
+                special_keys = {
+                    keyboard.Key.ctrl_l: 'Ctrl',
+                    keyboard.Key.ctrl_r: 'Ctrl',
+                    keyboard.Key.shift_l: 'Shift',
+                    keyboard.Key.shift_r: 'Shift',
+                    keyboard.Key.alt_l: 'Alt',
+                    keyboard.Key.alt_r: 'Alt',
+                    keyboard.Key.cmd_l: 'Cmd',
+                    keyboard.Key.cmd_r: 'Cmd',
+                    keyboard.Key.enter: 'Enter',
+                    keyboard.Key.esc: 'Esc',
+                }
+
+                if key in special_keys:
+                    k = special_keys[key]
+                    if k not in self.formatted_keys:
+                        self.formatted_keys.append(k)
+                        label.setText(f"已记录: {'+'.join(self.formatted_keys)}\n点击 确定 或按 Enter 完成")
+                elif hasattr(key, 'name'):
+                    # F1-F12 等功能键
+                    k = key.name.capitalize()
+                    if k not in self.formatted_keys:
+                        self.formatted_keys.append(k)
+                        label.setText(f"已记录: {'+'.join(self.formatted_keys)}\n点击 确定 或按 Enter 完成")
+
+        def on_release(key):
+            if key == keyboard.Key.enter:
+                dialog.accept()
+                return False
+            elif key == keyboard.Key.esc:
+                dialog.reject()
+                return False
+
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release, daemon=True)
+        listener.start()
+
+        result = dialog.exec_()
+        listener.stop()
+
+        if result == QDialog.Accepted and self.formatted_keys:
+            modifiers = ['Ctrl', 'Shift', 'Alt', 'Cmd']
+            modifier_set = set()
+            normal_keys = []
+
+            for k in self.formatted_keys:
+                if k in modifiers:
+                    modifier_set.add(k)
+                else:
+                    normal_keys.append(k)
+
+            ordered_modifiers = sorted(modifier_set, key=lambda x: modifiers.index(x))
+            final_keys = ordered_modifiers + normal_keys
+            formatted_parts = []
+            for k in final_keys:
+                if k in ['Enter','Ctrl', 'Shift', 'Alt', 'Cmd','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12']:
+                    formatted_parts.append(f"<{k}>")
+                else:
+                    formatted_parts.append(k)
+            formatted_string = "+".join(formatted_parts)
+            return formatted_string, True
+        else:
+            return None, False
+
     def set_music_hotkey(self, music_path, current_hotkey):
-        hotkey, ok = QInputDialog.getText(
-            self, "设置快捷键", 
-            f"为 {os.path.basename(music_path)} 设置快捷键组合 (如 <Ctrl>+<Alt>+P):", 
-            text=current_hotkey if current_hotkey else "<Ctrl>+<Alt>+1"
-        )
+        hotkey, ok = self.record_hotkey_dialog(music_path, current_hotkey)
         
         if ok:
             # 检查快捷键是否已被占用
