@@ -7,9 +7,13 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton,
                             QFileDialog, QMessageBox, QShortcut, 
                             QInputDialog, QListWidget, QListWidgetItem,
                             QHBoxLayout, QMenuBar, QAction, QSplitter,
-                            QAbstractItemView, QSizePolicy, QMenu)
+                            QAbstractItemView, QSizePolicy, QMenu, QSystemTrayIcon)
 from PyQt5.QtCore import Qt, QSettings, pyqtSignal
 from PyQt5.QtGui import QKeySequence
+import sys
+from PyQt5.QtGui import QIcon
+
+
 
 class MusicGroupWidget(QWidget):
     groupSelected = pyqtSignal(str)
@@ -266,7 +270,31 @@ class MusicPlayerApp(QMainWindow):
         self.shortcuts = {}
         # 加载上次的设置
         self.load_settings()
-        
+
+        # 创建系统托盘图标
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QIcon("assert/logo.png"))
+        self.tray_icon.setToolTip("MusicPlayer")
+
+        tray_menu = QMenu()
+        show_action = QAction("显示窗口", self)
+        quit_action = QAction("退出", self)
+
+        tray_menu.addAction(show_action)
+        tray_menu.addSeparator()
+        tray_menu.addAction(quit_action)
+
+        self.tray_icon.setContextMenu(tray_menu)
+
+        # 绑定菜单事件
+        show_action.triggered.connect(self.show_window)
+        quit_action.triggered.connect(QApplication.quit)
+
+        # 双击托盘图标显示窗口
+        self.tray_icon.activated.connect(self.on_tray_activated)
+
+        # 显示托盘图标
+        self.tray_icon.show()
     def init_ui(self):
         self.setWindowTitle("音乐播放器")
         self.setGeometry(100, 100, 800, 600)
@@ -585,12 +613,30 @@ class MusicPlayerApp(QMainWindow):
         self.music_list_widget.save_hotkeys(self.settings)
     
     def closeEvent(self, event):
-        # 保存设置
-        self.save_settings()
+        # # 保存设置
+        # self.save_settings()
         
-        # 停止播放并退出
-        self.stop_music()
-        event.accept()
+        # # 停止播放并退出
+        # self.stop_music()
+        # event.accept()
+        event.ignore()
+        self.hide()
+        self.tray_icon.showMessage(
+            "程序仍在运行",
+            "点击托盘图标可重新打开窗口",
+            QSystemTrayIcon.Information,
+            3000
+        )
+    def show_window(self):
+        """显示主窗口"""
+        self.showNormal()
+        self.activateWindow()
+
+    def on_tray_activated(self, reason):
+        """托盘图标双击事件"""
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.show_window()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
