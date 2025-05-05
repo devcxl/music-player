@@ -126,6 +126,7 @@ class MusicListWidget(QWidget):
     shortcutRequested = pyqtSignal(str, str)  # music_path, current_hotkey
     deleteRequested = pyqtSignal(str)
     moveRequested = pyqtSignal(str)
+    playRequested = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
@@ -196,7 +197,7 @@ class MusicListWidget(QWidget):
                     break
             
             btn = QPushButton("快捷键" + (f" ({current_hotkey})" if current_hotkey else ""))
-            btn.clicked.connect(lambda : self.shortcutRequested.emit(music_path, hotkey))
+            btn.clicked.connect(lambda : self.shortcutRequested.emit(music_path, current_hotkey))
             
             layout.addWidget(label)
             layout.addWidget(btn)
@@ -286,7 +287,7 @@ class MusicPlayerApp(QMainWindow):
         self.music_list_widget.shortcutRequested.connect(self.set_music_hotkey)
         self.music_list_widget.deleteRequested.connect(self.on_delete_music_requested)
         self.music_list_widget.moveRequested.connect(self.on_move_music_requested)
-        # self.music_list_widget.playRequested.connect(self.play_music)
+        self.music_list_widget.playRequested.connect(self.play_music)
         
         # 添加默认分组
         if not self.group_widget.get_all_groups():
