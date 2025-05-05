@@ -14,6 +14,17 @@ from PyQt5.QtGui import QIcon
 from pynput import keyboard
 import threading
 
+
+
+def resource_path(relative_path):
+    """ 获取资源的绝对路径，适用于 PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
 class MusicGroupWidget(QWidget):
     groupSelected = pyqtSignal(str)
     groupDeleted = pyqtSignal(str)
@@ -272,7 +283,7 @@ class MusicPlayerApp(QMainWindow):
 
         # 创建系统托盘图标
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon("assert/logo.png"))
+        self.tray_icon.setIcon(QIcon(resource_path("assert/logo.png")))
         self.tray_icon.setToolTip("MusicPlayer")
 
         tray_menu = QMenu()
